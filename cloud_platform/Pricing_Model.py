@@ -28,7 +28,7 @@ class Pricing_Model(ABC):
         pass
 
     @abstractmethod
-    def refresh(self, fp):
+    def refresh(self, fp, lock):
         """
         刷新GCP/AWS当前时刻的定价模型和可用机型，及对应的定价数据
         开机时执行一次refresh可以初始化

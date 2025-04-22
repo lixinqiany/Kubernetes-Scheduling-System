@@ -24,16 +24,17 @@ class GCP_Pricing(Pricing_Model):
         self.pre_defined_vm = self._read_flavor_pool(fp, "gcp")
         logger.info(f"GCP 定价模型配置完成")
 
-    def refresh(self, fp):
+    def refresh(self, fp, lock):
         self.machine_cache.clear()
         self.pricing_cache.clear()
         self.machine2price_cache.clear()
 
         self.fetch_machine_types()
         self.fetch_pricing_model()
+        lock.acquire()
         self.calculate_pricing()
-
         self.export(fp)
+        lock.release()
 
     def export(self, fp):
         temp = [{k:v} for k,v in self.machine2price_cache.items()]
