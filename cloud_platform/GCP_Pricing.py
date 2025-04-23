@@ -57,7 +57,7 @@ class GCP_Pricing(Pricing_Model):
 
     def fetch_pricing_model(self):
         logger.info("开始获取当前机型范围内所有定价模型")
-        time.sleep(2)
+        time.sleep(5)
         services = list(self.billing_client.list_services())
         self.compute_service_id = next(
             s.name for s in services
@@ -123,7 +123,7 @@ class GCP_Pricing(Pricing_Model):
                         "RAM": mt.memory_mb
                     }
                     self.machine_cache[mt.name.split('-')[0]].append(info)
-                    print(f"\t{info}")
+                    #print(f"\t{info}")
         except Exception as e:
             logger.error(f"错误发生在获取GCP可用VM时")
             print(e)
@@ -133,7 +133,7 @@ class GCP_Pricing(Pricing_Model):
 
     def calculate_pricing(self):
         logger.info("开始计算GCP平台当前可用机型的定价")
-        time.sleep(5)
+        #time.sleep(5)
         try:
             for type, vms in self.machine_cache.items():
                 cpu_p, ram_p = self.pricing_cache[type]['CPU'], self.pricing_cache[type]['RAM']
@@ -144,7 +144,7 @@ class GCP_Pricing(Pricing_Model):
                         "RAM": ram,
                         "price": vcpu * cpu_p + ram_p * ram
                     }
-                    print(f"\t{vm['type']}的价格为{vcpu * cpu_p + ram_p * ram:.6f}")
+                    #print(f"\t{vm['type']}的价格为{vcpu * cpu_p + ram_p * ram:.6f}")
         except Exception as e:
             logger.error(f"错误发生在计算VM定价时")
             print(e)

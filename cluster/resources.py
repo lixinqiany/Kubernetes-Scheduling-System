@@ -6,6 +6,7 @@ class Pod:
         self.namespace = request.get("namespace",None)
         self.node = request.get("node", None)
         self.name = request.get("name", None)
+        self.scheduler_name = request.get("scheduler_name", None)
 
     @property
     def cpu(self):

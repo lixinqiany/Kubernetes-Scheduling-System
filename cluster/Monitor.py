@@ -3,7 +3,7 @@ from kubernetes import config, client
 from collections import defaultdict
 from cluster.resources import Node, Pod
 from cloud_platform.NodeManage import GCP_Manager
-
+import os
 logger = logging.getLogger(__name__)
 
 class K8s_Monitor:
@@ -30,7 +30,10 @@ class K8s_Monitor:
         try:
             nodes = self.core_v1.list_node().items
             for node in nodes:
-                k,v = self._parse_node(node)
+                res = self._parse_node(node)
+                if res is None:
+                    continue
+                k,v = res
                 self.node_cache[k] = v
             logger.info(f"在Kubernetes集群中或得到了{len(self.node_cache)}个节点")
         except Exception as e:
@@ -44,17 +47,20 @@ class K8s_Monitor:
         for cond in node.status.conditions:
             if cond.type == "Ready":
                 status = "Ready" if cond.status == "True" else "NotReady"
-        e_ip = self.gcp_manager.instances[node.metadata.name]
+                if status == "NotReady":
+                    return None
+        e_ip = self.gcp_manager.instances[node.metadata.name].externalIP
         node_info = {
             "name": node.metadata.name,
             "InternalIP": addresses.get("InternalIP", None),
             "ExternalIP": e_ip,
             "Hostname": addresses.get("Hostname", None),
-            "CPU": node.status.capacity["cpu"],
+            "CPU": float(node.status.capacity["cpu"]),
             "RAM": self._parse_node_memory(node.status.capacity["memory"]),
-            "status": status
+            "status": status,
+            "price":0
         }
-        logging.info(f"解析k8s Node ->\n\t{node_info}")
+        #logger.info(f"解析k8s Node ->\n\t{node_info}")
         return (node.metadata.name, Node(node.metadata.name, node_info))
 
     def _parse_node_memory(self, mem_str):
@@ -67,7 +73,10 @@ class K8s_Monitor:
             pods = self.core_v1.list_pod_for_all_namespaces().items
             pods = [x for x in pods if x.metadata.namespace == "default"]
             for pod in pods:
-                k,v = self._parse_pod(pod)
+                res = self._parse_pod(pod)
+                if res is None:
+                    continue
+                k,v = res
                 self.pod_cache[k] =v
             logger.info(f"在Kubernetes集群中得到了{len(self.pod_cache)}个Pods")
         except Exception as e:
@@ -77,7 +86,13 @@ class K8s_Monitor:
 
     def _parse_pod(self, pod):
         name, ns = pod.metadata.name, pod.metadata.namespace
-        status = pod.status.phase
+        if pod.metadata.deletion_timestamp is not None:
+            status = "Terminating"
+        else:
+            if pod.status.phase == "Pending" and pod.spec.node_name:
+                status = "Scheduled"  # 已调度但未就绪
+            else:
+                status = pod.status.phase  # 保持原始状态
         node = pod.spec.node_name
         cpu = sum([self._parse_pod_cpu(x.resources.requests["cpu"]) for x in pod.spec.containers])
         ram = sum([self._parse_pod_ram(x.resources.requests["memory"]) for x in pod.spec.containers])
@@ -86,9 +101,10 @@ class K8s_Monitor:
             "namespace": ns,
             "status": status,
             "node": node,
-            "CPU": cpu, "RAM": ram
+            "CPU": cpu, "RAM": ram,
+            "scheduler_name":pod.spec.scheduler_name
         }
-        logger.info(f"解析k8s Pod ->\n\t{pod_info}")
+        #logger.info(f"解析k8s Pod ->\n\t{pod_info}")
         pod_copy = Pod(pod_info)
         return (name, pod_copy)
 
@@ -110,8 +126,16 @@ class K8s_Monitor:
 
     def allocate_pods(self):
         logger.info("开始将k8s内的节点和pod做匹配")
-        for k,v in self.pod_cache.items():
+        pods = {k:v for k,v in self.pod_cache.items() if v.status=="Running"}
+        for k,v in pods.items():
             node_name = v.node
             node = self.node_cache[node_name]
             node.pods.append(v)
-            logger.info(f"成功将{k}匹配到节点{node_name}")
+            # logger.info(f"成功将{k}匹配到节点{node_name}")
+
+if __name__=="__main__":
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "../configurations/single-cloud-ylxq-ed1608c43bb4.json"
+    gcp_manager = GCP_Manager()
+    a= K8s_Monitor(gcp_manager=gcp_manager,
+        credential="../configurations/.kube/config")
+    a.fetch_pods()
